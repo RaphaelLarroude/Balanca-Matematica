@@ -21,15 +21,25 @@ export const BalanceScale: React.FC<BalanceScaleProps> = ({
   const leftTotal = useMemo(() => leftBlocks.reduce((acc, b) => acc + safeValue(b.value), 0), [leftBlocks]);
   const rightTotal = useMemo(() => rightBlocks.reduce((acc, b) => acc + safeValue(b.value), 0), [rightBlocks]);
   
-  const difference = rightTotal - leftTotal;
+  // Check if any block on the scale has an undefined variable (NaN)
+  const hasUndefinedVar = useMemo(() => {
+    return leftBlocks.some(b => isNaN(b.value)) || rightBlocks.some(b => isNaN(b.value));
+  }, [leftBlocks, rightBlocks]);
+
+  // If there is an undefined variable, we force the scale to be balanced (difference 0)
+  // Otherwise, we calculate the actual difference.
+  const difference = hasUndefinedVar ? 0 : rightTotal - leftTotal;
   
   // Calculate rotation angle (clamped between -20 and 20 degrees)
   const rotationAngle = Math.max(-20, Math.min(20, difference * 2));
   
   const symbol = useMemo(() => {
+    // If undefined variable exists, express equality (or uncertainty treated as equality for balance)
+    if (hasUndefinedVar) return '=';
+    
     if (Math.abs(leftTotal - rightTotal) < 0.001) return '=';
     return leftTotal > rightTotal ? '>' : '<';
-  }, [leftTotal, rightTotal]);
+  }, [leftTotal, rightTotal, hasUndefinedVar]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -45,13 +55,21 @@ export const BalanceScale: React.FC<BalanceScaleProps> = ({
         <div className="flex flex-col items-center gap-1 transition-transform duration-300 pointer-events-auto">
             <div className="bg-white/90 backdrop-blur-sm shadow-lg rounded-xl md:rounded-2xl px-2 py-1.5 md:px-6 md:py-3 border border-indigo-100 min-w-[60px] md:min-w-[100px] text-center transform scale-90 md:scale-100 origin-top-left">
                 <span className="hidden md:block text-xs font-bold text-indigo-400 uppercase tracking-widest mb-1">Esquerda</span>
-                <span className="text-lg md:text-3xl font-black text-indigo-600 tabular-nums">{Number(leftTotal.toFixed(2))}</span>
+                <span className="text-lg md:text-3xl font-black text-indigo-600 tabular-nums">
+                  {/* Show total, or maybe '?' if you wanted, but keeping existing logic for number display is usually safer unless requested */}
+                  {Number(leftTotal.toFixed(2))}
+                </span>
             </div>
         </div>
         
         {/* Central Symbol */}
         <div className="flex items-center justify-center -mt-1 md:mt-0 pointer-events-auto">
-             <div className="w-8 h-8 md:w-20 md:h-20 rounded-full bg-white shadow-xl flex items-center justify-center text-lg md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-br from-indigo-500 to-purple-600 border-2 md:border-4 border-indigo-50">
+             <div className={`
+                w-8 h-8 md:w-20 md:h-20 rounded-full bg-white shadow-xl flex items-center justify-center 
+                text-lg md:text-5xl font-black text-transparent bg-clip-text 
+                border-2 md:border-4 border-indigo-50 transition-colors duration-300
+                ${hasUndefinedVar ? 'bg-gradient-to-br from-amber-400 to-orange-500' : 'bg-gradient-to-br from-indigo-500 to-purple-600'}
+             `}>
                 {symbol}
              </div>
         </div>
@@ -76,7 +94,7 @@ export const BalanceScale: React.FC<BalanceScaleProps> = ({
         >
           {/* Pivot Point (Center Mechanism) */}
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 md:w-12 md:h-12 bg-white rounded-full shadow-[inset_0_-4px_6px_rgba(0,0,0,0.1)] border-2 md:border-4 border-slate-200 z-20 flex items-center justify-center">
-              <div className="w-2 h-2 md:w-4 md:h-4 bg-slate-400 rounded-full shadow-inner"></div>
+              <div className={`w-2 h-2 md:w-4 md:h-4 rounded-full shadow-inner transition-colors ${hasUndefinedVar ? 'bg-amber-400' : 'bg-slate-400'}`}></div>
           </div>
 
           {/* Left Pan Assembly */}

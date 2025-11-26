@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Variable, X, Save } from 'lucide-react';
+import { Plus, Trash2, Variable, X, Save, Wand2 } from 'lucide-react';
 import { BlockData, ZoneId } from './types';
 import { evaluateExpression, generateId } from './utils/math';
 import { BalanceScale } from './components/BalanceScale';
@@ -136,6 +136,91 @@ const App: React.FC = () => {
     });
   };
 
+  // Algorithm to find the variable value that balances the scale
+  const solveForBalance = () => {
+    // 1. Find all blocks on the scale
+    const scaleBlockIds = [...zones.left, ...zones.right];
+    if (scaleBlockIds.length === 0) {
+        alert("Coloque blocos na balança primeiro.");
+        return;
+    }
+
+    // 2. Identify undefined variables used in these blocks
+    const usedVars = new Set<string>();
+    const varRegex = /[a-zA-Z_][a-zA-Z0-9_]*/g;
+    
+    scaleBlockIds.forEach(id => {
+        const expr = blocks[id].expression;
+        const matches = expr.match(varRegex);
+        if (matches) {
+            matches.forEach(v => usedVars.add(v));
+        }
+    });
+
+    // Filter out variables that are already defined
+    const undefinedVars = Array.from(usedVars).filter(v => variables[v] === undefined);
+
+    if (undefinedVars.length === 0) {
+        alert("Não há variáveis desconhecidas para calcular.");
+        return;
+    }
+
+    if (undefinedVars.length > 1) {
+        alert(`Há muitas variáveis desconhecidas (${undefinedVars.join(', ')}). A balança só consegue resolver para uma variável de cada vez.`);
+        return;
+    }
+
+    const targetVar = undefinedVars[0];
+
+    // 3. Calculate value using linear interpolation (assuming linear expressions)
+    // Formula: TotalLeft(x) = TotalRight(x)
+    // Since it's linear: (SlopeL * x + InterceptL) = (SlopeR * x + InterceptR)
+    // x * (SlopeL - SlopeR) = InterceptR - InterceptL
+    // x = (InterceptR - InterceptL) / (SlopeL - SlopeR)
+
+    const calculateTotalWeight = (testValue: number) => {
+        const tempVars = { ...variables, [targetVar]: testValue };
+        const totalL = zones.left.reduce((sum, id) => {
+            const val = evaluateExpression(blocks[id].expression, tempVars);
+            return sum + (val === null || isNaN(val) ? 0 : val);
+        }, 0);
+        const totalR = zones.right.reduce((sum, id) => {
+            const val = evaluateExpression(blocks[id].expression, tempVars);
+            return sum + (val === null || isNaN(val) ? 0 : val);
+        }, 0);
+        return { totalL, totalR };
+    };
+
+    // Calculate at x = 0 (Intercepts)
+    const at0 = calculateTotalWeight(0);
+    // Calculate at x = 1 (Slope + Intercept)
+    const at1 = calculateTotalWeight(1);
+
+    const slopeL = at1.totalL - at0.totalL;
+    const slopeR = at1.totalR - at0.totalR;
+    const interceptL = at0.totalL;
+    const interceptR = at0.totalR;
+
+    const denominator = slopeL - slopeR;
+
+    if (Math.abs(denominator) < 1e-10) {
+        // Slopes are equal. 
+        if (Math.abs(interceptL - interceptR) < 1e-10) {
+            alert(`A balança já está equilibrada para qualquer valor de ${targetVar}.`);
+        } else {
+            alert(`Impossível equilibrar. A variável ${targetVar} é cancelada ou a equação não tem solução.`);
+        }
+        return;
+    }
+
+    const result = (interceptR - interceptL) / denominator;
+    
+    // Round to 2 decimal places for neatness, but keep precision if needed
+    const roundedResult = Math.round(result * 100) / 100;
+
+    setVariables(prev => ({ ...prev, [targetVar]: roundedResult }));
+  };
+
   return (
     <div className="h-screen flex flex-col font-sans text-slate-800 overflow-hidden relative">
       
@@ -238,9 +323,19 @@ const App: React.FC = () => {
 
               {/* 2. Variables Section */}
               <div className="flex-1 min-w-[220px] md:min-w-0 bg-white rounded-xl md:rounded-2xl p-2.5 md:p-4 shadow-sm border border-emerald-50">
-                  <h2 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-2">
-                    <Variable className="w-3 h-3" /> Variáveis
-                  </h2>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <h2 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                        <Variable className="w-3 h-3" /> Variáveis
+                    </h2>
+                    <button 
+                        onClick={solveForBalance}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-full text-[10px] font-bold transition-colors"
+                        title="Calcular valor da variável para equilibrar a balança"
+                    >
+                        <Wand2 className="w-3 h-3" />
+                        <span className="hidden sm:inline">Auto-Equilibrar</span>
+                    </button>
+                  </div>
                   
                   <div className="flex gap-1.5 mb-2">
                     <input 

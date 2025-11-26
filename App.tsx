@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Variable, X, Save, Wand2 } from 'lucide-react';
+
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Trash2, Variable, X, Save, Wand2, Divide, Type } from 'lucide-react';
 import { BlockData, ZoneId } from './types';
 import { evaluateExpression, generateId } from './utils/math';
 import { BalanceScale } from './components/BalanceScale';
@@ -8,7 +9,13 @@ import { MathBlock } from './components/MathBlock';
 const App: React.FC = () => {
   const [inputValue, setInputValue] = useState('');
   const [inputError, setInputError] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   
+  // Fraction Mode State
+  const [isFractionMode, setIsFractionMode] = useState(false);
+  const [numerator, setNumerator] = useState('');
+  const [denominator, setDenominator] = useState('');
+
   const [blocks, setBlocks] = useState<{ [key: string]: BlockData }>({});
   const [zones, setZones] = useState<{ [key in ZoneId]: string[] }>({
     bench: [],
@@ -62,10 +69,32 @@ const App: React.FC = () => {
     setInputError(false);
   };
 
+  const createFractionBlock = () => {
+    if (!numerator.trim() || !denominator.trim()) {
+        setInputError(true);
+        return;
+    }
+    // Wrap in parentheses to ensure order of operations: (x+1)/(2)
+    const expr = `(${numerator.trim()})/(${denominator.trim()})`;
+    createBlock(expr);
+    setNumerator('');
+    setDenominator('');
+    setInputError(false);
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      createBlock(inputValue);
+      if (isFractionMode) {
+        createFractionBlock();
+      } else {
+        createBlock(inputValue);
+      }
     }
+  };
+
+  const insertSymbol = (symbol: string) => {
+    setInputValue(prev => prev + symbol);
+    inputRef.current?.focus();
   };
 
   const handleDrop = (e: React.DragEvent, targetZone: ZoneId) => {
@@ -221,6 +250,20 @@ const App: React.FC = () => {
     setVariables(prev => ({ ...prev, [targetVar]: roundedResult }));
   };
 
+  const mathTools = [
+    { label: 'x²', insert: '²' },
+    { label: 'x³', insert: '³' },
+    { label: '^', insert: '^' },
+    { label: '√', insert: '√' },
+    { label: '∛', insert: 'root(, 3)' }, // Using generic root for consistency if user edits
+    { label: 'ⁿ√', insert: 'root(, )' },
+    { label: 'logₙ', insert: 'log(, )' },
+    { label: 'π', insert: 'π' },
+    { label: '÷', insert: '/' },
+    { label: '(', insert: '(' },
+    { label: ')', insert: ')' },
+  ];
+
   return (
     <div className="h-screen flex flex-col font-sans text-slate-800 overflow-hidden relative">
       
@@ -282,42 +325,119 @@ const App: React.FC = () => {
            <div className="flex-none flex flex-row md:flex-col gap-2 md:gap-4 overflow-x-auto md:overflow-x-visible md:overflow-y-auto custom-scrollbar pr-1 pb-1 md:pb-0">
               
               {/* 1. New Block Input */}
-              <div className="flex-1 min-w-[200px] md:min-w-0 bg-white rounded-xl md:rounded-2xl p-2.5 md:p-4 shadow-sm border border-indigo-50">
-                  <h2 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-2">
-                    <Plus className="w-3 h-3" /> Novo Bloco
-                  </h2>
-                  <div className="flex flex-col gap-1">
-                    <div className="flex gap-2">
-                        <input 
-                          type="text" 
-                          value={inputValue}
-                          onChange={(e) => {
-                              setInputValue(e.target.value);
-                              setInputError(false);
-                          }}
-                          onKeyDown={handleKeyPress}
-                          placeholder="Ex: 2x, 5"
-                          className={`
-                            flex-1 pl-3 pr-3 py-2 md:py-2.5 
-                            bg-slate-50 rounded-lg border-2 outline-none 
-                            font-medium text-indigo-600 text-sm
-                            placeholder-indigo-200
-                            transition-all duration-200
-                            ${inputError 
-                                ? 'border-rose-200 bg-rose-50 focus:border-rose-400' 
-                                : 'border-slate-100 focus:border-indigo-400 focus:bg-white focus:shadow-lg'
-                            }
-                          `}
-                        />
-                        <button 
-                          onClick={() => createBlock(inputValue)}
-                          disabled={!inputValue.trim()}
-                          className="bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg px-3 md:px-4 shadow-sm shadow-indigo-200 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center active:scale-95"
-                          title="Criar bloco"
+              <div className="flex-1 min-w-[200px] md:min-w-0 bg-white rounded-xl md:rounded-2xl p-2.5 md:p-4 shadow-sm border border-indigo-50 transition-all">
+                  <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                        <Plus className="w-3 h-3" /> Novo Bloco
+                    </h2>
+                    {/* Toggle Switch */}
+                    <div className="flex bg-slate-100 p-0.5 rounded-lg">
+                        <button
+                            onClick={() => { setIsFractionMode(false); setInputError(false); }}
+                            className={`p-1 rounded-md transition-all ${!isFractionMode ? 'bg-white shadow text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                            title="Modo Texto"
                         >
-                          <Plus className="w-5 h-5" />
+                            <Type size={14} />
+                        </button>
+                        <button
+                            onClick={() => { setIsFractionMode(true); setInputError(false); }}
+                            className={`p-1 rounded-md transition-all ${isFractionMode ? 'bg-white shadow text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                            title="Modo Fração"
+                        >
+                            <Divide size={14} />
                         </button>
                     </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    {!isFractionMode ? (
+                        /* Text Mode */
+                        <>
+                            <div className="flex gap-2">
+                                <input 
+                                  ref={inputRef}
+                                  type="text" 
+                                  value={inputValue}
+                                  onChange={(e) => {
+                                      setInputValue(e.target.value);
+                                      setInputError(false);
+                                  }}
+                                  onKeyDown={handleKeyPress}
+                                  placeholder="Ex: 2x, root(16, 4)"
+                                  className={`
+                                    flex-1 pl-3 pr-3 py-2 md:py-2.5 
+                                    bg-slate-50 rounded-lg border-2 outline-none 
+                                    font-medium text-indigo-600 text-sm
+                                    placeholder-indigo-200
+                                    transition-all duration-200
+                                    ${inputError 
+                                        ? 'border-rose-200 bg-rose-50 focus:border-rose-400' 
+                                        : 'border-slate-100 focus:border-indigo-400 focus:bg-white focus:shadow-lg'
+                                    }
+                                  `}
+                                />
+                                <button 
+                                  onClick={() => createBlock(inputValue)}
+                                  disabled={!inputValue.trim()}
+                                  className="bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg px-3 md:px-4 shadow-sm shadow-indigo-200 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center active:scale-95"
+                                  title="Criar bloco"
+                                >
+                                  <Plus className="w-5 h-5" />
+                                </button>
+                            </div>
+                            
+                            {/* Math Toolbar */}
+                            <div className="flex flex-wrap gap-1.5">
+                                {mathTools.map(tool => (
+                                    <button
+                                        key={tool.label}
+                                        onClick={() => insertSymbol(tool.insert)}
+                                        className="px-2 py-1 bg-slate-100 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 text-xs font-semibold text-slate-600 hover:text-indigo-600 rounded shadow-sm transition-all active:scale-95"
+                                    >
+                                        {tool.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </>
+                    ) : (
+                        /* Fraction Mode */
+                        <div className="flex gap-2 items-center">
+                           <div className={`
+                                flex-1 flex flex-col items-center bg-slate-50 rounded-lg border-2 px-2 py-1
+                                transition-all duration-200
+                                ${inputError 
+                                    ? 'border-rose-200 bg-rose-50' 
+                                    : 'border-slate-100 focus-within:border-indigo-400 focus-within:bg-white focus-within:shadow-lg'
+                                }
+                           `}>
+                               <input 
+                                  type="text"
+                                  value={numerator}
+                                  onChange={(e) => { setNumerator(e.target.value); setInputError(false); }}
+                                  onKeyDown={handleKeyPress}
+                                  placeholder="Num"
+                                  className="w-full text-center bg-transparent border-none outline-none font-medium text-indigo-600 text-sm placeholder-indigo-200 p-1"
+                               />
+                               <div className="w-full h-0.5 bg-indigo-200 my-0.5"></div>
+                               <input 
+                                  type="text"
+                                  value={denominator}
+                                  onChange={(e) => { setDenominator(e.target.value); setInputError(false); }}
+                                  onKeyDown={handleKeyPress}
+                                  placeholder="Den"
+                                  className="w-full text-center bg-transparent border-none outline-none font-medium text-indigo-600 text-sm placeholder-indigo-200 p-1"
+                               />
+                           </div>
+                           <button 
+                              onClick={createFractionBlock}
+                              disabled={!numerator.trim() || !denominator.trim()}
+                              className="self-stretch bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg px-3 md:px-4 shadow-sm shadow-indigo-200 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center active:scale-95"
+                              title="Criar fração"
+                            >
+                              <Plus className="w-5 h-5" />
+                            </button>
+                        </div>
+                    )}
                   </div>
               </div>
 

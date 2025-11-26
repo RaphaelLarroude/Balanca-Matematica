@@ -10,6 +10,7 @@ const App: React.FC = () => {
   const [inputValue, setInputValue] = useState('');
   const [inputError, setInputError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const varInputRef = useRef<HTMLInputElement>(null);
   
   // Fraction Mode State
   const [isFractionMode, setIsFractionMode] = useState(false);
@@ -97,6 +98,11 @@ const App: React.FC = () => {
     inputRef.current?.focus();
   };
 
+  const insertSymbolToVar = (symbol: string) => {
+    setNewVarValue(prev => prev + symbol);
+    varInputRef.current?.focus();
+  };
+
   const handleDrop = (e: React.DragEvent, targetZone: ZoneId) => {
     e.preventDefault();
     try {
@@ -149,10 +155,16 @@ const App: React.FC = () => {
         return;
     }
 
-    const numValue = parseFloat(newVarValue);
-    if (isNaN(numValue)) return;
+    // Evaluate the expression for the variable value instead of just parsing float
+    // This allows defining "y = x + 5" or "z = 2*a"
+    const calculatedValue = evaluateExpression(newVarValue, variables);
 
-    setVariables(prev => ({ ...prev, [newVarName.trim()]: numValue }));
+    if (calculatedValue === null || isNaN(calculatedValue)) {
+        alert("Valor inválido. Certifique-se de que a expressão está correta e todas as variáveis referenciadas existem.");
+        return;
+    }
+
+    setVariables(prev => ({ ...prev, [newVarName.trim()]: calculatedValue }));
     setNewVarName('');
     setNewVarValue('');
   };
@@ -467,9 +479,10 @@ const App: React.FC = () => {
                     />
                     <div className="flex items-center text-slate-400 text-xs">=</div>
                     <input 
+                      ref={varInputRef}
                       type="text"
-                      inputMode="decimal"
-                      placeholder="10"
+                      // Removed inputMode="decimal" to allow math expressions and other variables
+                      placeholder="10 ou 2*x"
                       value={newVarValue}
                       onChange={(e) => setNewVarValue(e.target.value)}
                       className="flex-1 min-w-0 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-center text-emerald-600 placeholder-emerald-200 focus:border-emerald-400 focus:bg-white outline-none"
@@ -483,13 +496,26 @@ const App: React.FC = () => {
                     </button>
                   </div>
 
+                  {/* Variable Math Toolbar */}
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                      {mathTools.map(tool => (
+                          <button
+                              key={tool.label}
+                              onClick={() => insertSymbolToVar(tool.insert)}
+                              className="px-2 py-1 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 text-xs font-semibold text-slate-600 hover:text-emerald-600 rounded shadow-sm transition-all active:scale-95"
+                          >
+                              {tool.label}
+                          </button>
+                      ))}
+                  </div>
+
                   {Object.keys(variables).length > 0 && (
                     <div className="flex flex-wrap gap-1.5 max-h-[40px] md:max-h-none overflow-y-auto">
                       {Object.entries(variables).map(([name, val]) => (
                         <div key={name} className="flex items-center gap-1 pl-2 pr-1 py-0.5 bg-emerald-50 border border-emerald-100 rounded-full group">
                           <span className="text-[10px] font-bold text-emerald-700">{name}</span>
                           <span className="text-[10px] text-emerald-600">=</span>
-                          <span className="text-[10px] font-bold text-emerald-700 mr-1">{val}</span>
+                          <span className="text-[10px] font-bold text-emerald-700 mr-1">{Number(val.toFixed(2))}</span>
                           <button 
                             onClick={() => deleteVariable(name)}
                             className="w-4 h-4 rounded-full flex items-center justify-center text-emerald-300 hover:bg-emerald-200 hover:text-emerald-700 transition-colors"
